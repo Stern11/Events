@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Heizen – 2026 Events Dashboard (US + Global)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<style>
+  html, body { height: 100%; margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  #app { display: grid; grid-template-columns: 320px 1fr; grid-template-rows: 56px 1fr; height: 100%; }
+  header { grid-column: 1 / span 2; grid-row: 1; display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #eee; background:#fff; }
+  .brand { font-weight: 700; letter-spacing: 0.2px; }
+  .actions a { margin-left:12px; font-size: 13px; }
+  aside { grid-column: 1; grid-row: 2; overflow:auto; border-right:1px solid #eee; background:#fafafa; }
+  main { grid-column: 2; grid-row: 2; position: relative; }
+  #map { position: absolute; inset: 0; }
+  .panel { padding: 12px 12px 16px 12px; }
+  .section-title { font-size: 12px; opacity: .7; margin: 12px 0 4px; text-transform: uppercase; }
+  .filter-group { background:#fff; border:1px solid #e6e6e6; border-radius:10px; padding:10px; margin-bottom:10px; }
+  .filter-row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+  input[type="text"], select { width: 100%; padding:8px 10px; border:1px solid #e0e0e0; border-radius:8px; }
+  .checkboxes { display:grid; grid-template-columns: 1fr; gap:6px; }
+  .months { display:grid; grid-template-columns: repeat(6, 1fr); gap:6px; margin-top:6px; }
+  .tag { font-size: 12px; background:#eef2ff; border-radius:999px; padding:2px 8px; margin-right:6px; }
+  .list { margin-top: 10px; }
+  .item { background:#fff; border:1px solid #e6e6e6; border-radius:10px; padding:10px; margin-bottom:8px; cursor:pointer; }
+  .item:hover { border-color:#c9c9c9; }
+  .muted { color:#6b7280; font-size:12px; }
+  .btn { padding:8px 10px; border-radius:8px; border:1px solid #ddd; background:#fff; cursor:pointer; }
+  .btn.primary { background:#111827; color:#fff; border-color:#111827; }
+  .pill { padding:3px 8px; border-radius:999px; border:1px solid #e5e7eb; font-size:12px; }
+  .controls { position: absolute; top: 12px; right: 12px; background:#fff; border:1px solid #eee; padding:8px; border-radius:10px; display:flex; gap:8px; align-items:center; }
+  .legend { position: absolute; bottom: 12px; left: 12px; background:#fff; border:1px solid #eee; padding:8px; border-radius:10px; font-size:12px; }
+  .legend-row { display:flex; align-items:center; gap:6px; margin:3px 0; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">Heizen Events 2026 — US + Global</div>
+    <div class="actions">
+      <a class="pill" href="events_dashboard_2026_data.csv" download>Download CSV</a>
+      <button id="exportFiltered" class="pill">Export Filtered</button>
+    </div>
+  </header>
+  <aside>
+    <div class="panel">
+      <div class="filter-group">
+        <div class="section-title">Search</div>
+        <input id="search" type="text" placeholder="Search event or city"/>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">Region</div>
+        <div class="filter-row">
+          <label><input type="radio" name="region" value="All" checked/> All</label>
+          <label><input type="radio" name="region" value="US"/> US</label>
+          <label><input type="radio" name="region" value="Global"/> Global</label>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">Sectors</div>
+        <div id="sectorBoxes" class="checkboxes"></div>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">Months</div>
+        <div class="months" id="monthBoxes"></div>
+        <div class="filter-row" style="margin-top:8px;">
+          <button id="monthsAll" class="btn">All</button>
+          <button id="monthsClear" class="btn">Clear</button>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">Results</div>
+        <div id="stats" class="muted"></div>
+        <div class="filter-row" style="margin-top:6px;">
+          <select id="sortBy">
+            <option value="name">Sort by: Name</option>
+            <option value="city">Sort by: City</option>
+            <option value="month">Sort by: Month</option>
+          </select>
+        </div>
+        <div id="list" class="list"></div>
+      </div>
+    </div>
+  </aside>
+  <main>
+    <div id="map"></div>
+    <div class="legend" id="legend"></div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+const DATA = [{"name": "NRF 2026: Retail\u2019s Big Show", "sector": "Retail, Consumer Goods & Grocery", "city": "New York City, NY", "country": "USA", "region": "US", "lat": 40.7128, "lon": -74.006, "dates": "Jan 11\u201313, 2026", "month": "Jan", "dates_std": "Jan 11-13, 2026"}, {"name": "NRF Rev 2026 \u2013 Reverse Logistics", "sector": "Retail, Consumer Goods & Grocery", "city": "New York City, NY", "country": "USA", "region": "US", "lat": 40.7128, "lon": -74.006, "dates": "Jan 11\u201312, 2026", "month": "Jan", "dates_std": "Jan 11-12, 2026"}, {"name": "RILA LINK 2026", "sector": "Retail, Consumer Goods & Grocery", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "Feb 1\u20134, 2026", "month": "Feb", "dates_std": "Feb 1-4, 2026"}, {"name": "Shoptalk 2026", "sector": "Retail, Consumer Goods & Grocery", "city": "Las Vegas, NV", "country": "USA", "region": "US", "lat": 36.1699, "lon": -115.1398, "dates": "Mar 18\u201321, 2026", "month": "Mar", "dates_std": "Mar 18-21, 2026"}, {"name": "Food Shippers of America Conference", "sector": "Retail, Consumer Goods & Grocery", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "Mar 1\u20133, 2026", "month": "Mar", "dates_std": "Mar 1-3, 2026"}, {"name": "AAFA Global Supply Chain & Trade", "sector": "Retail, Consumer Goods & Grocery", "city": "Baltimore, MD", "country": "USA", "region": "US", "lat": 39.2904, "lon": -76.6122, "dates": "Apr 14\u201315, 2026", "month": "Apr", "dates_std": "Apr 14-15, 2026"}, {"name": "IFDA Solutions Conference", "sector": "Retail, Consumer Goods & Grocery", "city": "San Antonio, TX", "country": "USA", "region": "US", "lat": 29.4241, "lon": -98.4936, "dates": "Sept 13\u201315, 2026", "month": "Sep", "dates_std": "Sept 13-15, 2026"}, {"name": "Groceryshop 2026", "sector": "Retail, Consumer Goods & Grocery", "city": "Las Vegas, NV", "country": "USA", "region": "US", "lat": 36.1699, "lon": -115.1398, "dates": "Sept 22\u201324, 2026", "month": "Sep", "dates_std": "Sept 22-24, 2026"}, {"name": "AIAA SciTech Forum", "sector": "Manufacturing & Industrial", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "Jan 12\u201316, 2026", "month": "Jan", "dates_std": "Jan 12-16, 2026"}, {"name": "Military Additive Manufacturing Summit", "sector": "Manufacturing & Industrial", "city": "Tampa, FL", "country": "USA", "region": "US", "lat": 27.9506, "lon": -82.4572, "dates": "Feb 3\u20135, 2026", "month": "Feb", "dates_std": "Feb 3-5, 2026"}, {"name": "MD&M West", "sector": "Manufacturing & Industrial", "city": "Anaheim, CA", "country": "USA", "region": "US", "lat": 33.8366, "lon": -117.9143, "dates": "Feb 3\u20135, 2026", "month": "Feb", "dates_std": "Feb 3-5, 2026"}, {"name": "GlobalChem", "sector": "Manufacturing & Industrial", "city": "Washington, DC", "country": "USA", "region": "US", "lat": 38.9072, "lon": -77.0369, "dates": "Feb 23\u201324, 2026", "month": "Feb", "dates_std": "Feb 23-24, 2026"}, {"name": "IPC APEX EXPO", "sector": "Manufacturing & Industrial", "city": "Anaheim, CA", "country": "USA", "region": "US", "lat": 33.8366, "lon": -117.9143, "dates": "Mar 13\u201319, 2026", "month": "Mar", "dates_std": "Mar 13-19, 2026"}, {"name": "American Manufacturing Summit", "sector": "Manufacturing & Industrial", "city": "Chicago, IL", "country": "USA", "region": "US", "lat": 41.8781, "lon": -87.6298, "dates": "Mar 17\u201318, 2026", "month": "Mar", "dates_std": "Mar 17-18, 2026"}, {"name": "North American Manufacturing Excellence Summit", "sector": "Manufacturing & Industrial", "city": "Houston, TX", "country": "USA", "region": "US", "lat": 29.7604, "lon": -95.3698, "dates": "Apr 20\u201322, 2026", "month": "Apr", "dates_std": "Apr 20-22, 2026"}, {"name": "AeroDef Manufacturing", "sector": "Manufacturing & Industrial", "city": "Boston, MA", "country": "USA", "region": "US", "lat": 42.3601, "lon": -71.0589, "dates": "Apr 14\u201316, 2026", "month": "Apr", "dates_std": "Apr 14-16, 2026"}, {"name": "MD&M South", "sector": "Manufacturing & Industrial", "city": "Charlotte, NC", "country": "USA", "region": "US", "lat": 35.2271, "lon": -80.8431, "dates": "Apr 22\u201323, 2026", "month": "Apr", "dates_std": "Apr 22-23, 2026"}, {"name": "Sensors Converge", "sector": "Manufacturing & Industrial", "city": "Santa Clara, CA", "country": "USA", "region": "US", "lat": 37.3541, "lon": -121.9552, "dates": "May 5\u20137, 2026", "month": "May", "dates_std": "May 5-7, 2026"}, {"name": "ASMC \u2013 Adv. Semiconductor Mfg. Conf.", "sector": "Manufacturing & Industrial", "city": "Albany, NY", "country": "USA", "region": "US", "lat": 42.6526, "lon": -73.7562, "dates": "May 11\u201314, 2026", "month": "May", "dates_std": "May 11-14, 2026"}, {"name": "Automate 2026", "sector": "Manufacturing & Industrial", "city": "Chicago, IL", "country": "USA", "region": "US", "lat": 41.8781, "lon": -87.6298, "dates": "June 22\u201325, 2026", "month": "Jun", "dates_std": "June 22-25, 2026"}, {"name": "IMTS 2026", "sector": "Manufacturing & Industrial", "city": "Chicago, IL", "country": "USA", "region": "US", "lat": 41.8781, "lon": -87.6298, "dates": "Sept 14\u201319, 2026", "month": "Sep", "dates_std": "Sept 14-19, 2026"}, {"name": "FABTECH 2026", "sector": "Manufacturing & Industrial", "city": "Las Vegas, NV", "country": "USA", "region": "US", "lat": 36.1699, "lon": -115.1398, "dates": "Oct 21\u201323, 2026", "month": "Oct", "dates_std": "Oct 21-23, 2026"}, {"name": "Automotive Logistics & Supply Chain Global (US)", "sector": "Manufacturing & Industrial", "city": "Detroit, MI", "country": "USA", "region": "US", "lat": 42.3314, "lon": -83.0458, "dates": "Sept 22\u201324, 2026", "month": "Sep", "dates_std": "Sept 22-24, 2026"}, {"name": "BGSA Supply Chain Conference", "sector": "Logistics, Transportation & Supply Chain", "city": "Palm Beach, FL", "country": "USA", "region": "US", "lat": 26.7056, "lon": -80.0364, "dates": "Jan 21\u201323, 2026", "month": "Jan", "dates_std": "Jan 21-23, 2026"}, {"name": "SMC\u00b3 Jump Start", "sector": "Logistics, Transportation & Supply Chain", "city": "Atlanta, GA", "country": "USA", "region": "US", "lat": 33.749, "lon": -84.388, "dates": "Jan 26\u201328, 2026", "month": "Jan", "dates_std": "Jan 26-28, 2026"}, {"name": "MARS Winter Meeting", "sector": "Logistics, Transportation & Supply Chain", "city": "Schaumburg, IL", "country": "USA", "region": "US", "lat": 42.0334, "lon": -88.0834, "dates": "Jan 13\u201315, 2026", "month": "Jan", "dates_std": "Jan 13-15, 2026"}, {"name": "Manifest 2026", "sector": "Logistics, Transportation & Supply Chain", "city": "Las Vegas, NV", "country": "USA", "region": "US", "lat": 36.1699, "lon": -115.1398, "dates": "Feb 9\u201311, 2026", "month": "Feb", "dates_std": "Feb 9-11, 2026"}, {"name": "AirCargo 2026", "sector": "Logistics, Transportation & Supply Chain", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "Feb 15\u201317, 2026", "month": "Feb", "dates_std": "Feb 15-17, 2026"}, {"name": "Recruitment & Retention Conf.", "sector": "Logistics, Transportation & Supply Chain", "city": "Nashville, TN", "country": "USA", "region": "US", "lat": 36.1627, "lon": -86.7816, "dates": "Feb 25\u201327, 2026", "month": "Feb", "dates_std": "Feb 25-27, 2026"}, {"name": "Truckload 2026 (TCA)", "sector": "Logistics, Transportation & Supply Chain", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "Feb 28\u2013Mar 3, 2026", "month": "Feb", "dates_std": "Feb 28-Mar 3, 2026"}, {"name": "Work Truck Week", "sector": "Logistics, Transportation & Supply Chain", "city": "Indianapolis, IN", "country": "USA", "region": "US", "lat": 39.7684, "lon": -86.1581, "dates": "Mar 10\u201313, 2026", "month": "Mar", "dates_std": "Mar 10-13, 2026"}, {"name": "TMC Annual Meeting", "sector": "Logistics, Transportation & Supply Chain", "city": "Nashville, TN", "country": "USA", "region": "US", "lat": 36.1627, "lon": -86.7816, "dates": "Feb 29\u2013Mar 3, 2026", "month": "Feb", "dates_std": "Feb 29-Mar 3, 2026"}, {"name": "Mid-America Trucking Show (MATS)", "sector": "Logistics, Transportation & Supply Chain", "city": "Louisville, KY", "country": "USA", "region": "US", "lat": 38.2527, "lon": -85.7585, "dates": "Mar 26\u201328, 2026", "month": "Mar", "dates_std": "Mar 26-28, 2026"}, {"name": "JOC TPM26", "sector": "Logistics, Transportation & Supply Chain", "city": "Long Beach, CA", "country": "USA", "region": "US", "lat": 33.7701, "lon": -118.1937, "dates": "Mar 1\u20134, 2026", "month": "Mar", "dates_std": "Mar 1-4, 2026"}, {"name": "MODEX 2026", "sector": "Logistics, Transportation & Supply Chain", "city": "Atlanta, GA", "country": "USA", "region": "US", "lat": 33.749, "lon": -84.388, "dates": "Apr 13\u201316, 2026", "month": "Apr", "dates_std": "Apr 13-16, 2026"}, {"name": "TIA Capital Ideas", "sector": "Logistics, Transportation & Supply Chain", "city": "Phoenix, AZ", "country": "USA", "region": "US", "lat": 33.4484, "lon": -112.074, "dates": "Apr 15\u201318, 2026", "month": "Apr", "dates_std": "Apr 15-18, 2026"}, {"name": "NTTC Annual Conference", "sector": "Logistics, Transportation & Supply Chain", "city": "Baltimore, MD", "country": "USA", "region": "US", "lat": 39.2904, "lon": -76.6122, "dates": "Apr 19\u201322, 2026", "month": "Apr", "dates_std": "Apr 19-22, 2026"}, {"name": "Home Delivery World", "sector": "Logistics, Transportation & Supply Chain", "city": "Nashville, TN", "country": "USA", "region": "US", "lat": 36.1627, "lon": -86.7816, "dates": "May 20\u201321, 2026", "month": "May", "dates_std": "May 20-21, 2026"}, {"name": "WERC 2026", "sector": "Logistics, Transportation & Supply Chain", "city": "Jacksonville, FL", "country": "USA", "region": "US", "lat": 30.3322, "lon": -81.6557, "dates": "May 17\u201320, 2026", "month": "May", "dates_std": "May 17-20, 2026"}, {"name": "Reuters Supply Chain USA", "sector": "Logistics, Transportation & Supply Chain", "city": "Chicago, IL", "country": "USA", "region": "US", "lat": 41.8781, "lon": -87.6298, "dates": "June 23\u201324, 2026", "month": "Jun", "dates_std": "June 23-24, 2026"}, {"name": "SMC\u00b3 Connections", "sector": "Logistics, Transportation & Supply Chain", "city": "Palm Beach, FL", "country": "USA", "region": "US", "lat": 26.7056, "lon": -80.0364, "dates": "June 29\u2013July 1, 2026", "month": "Jun", "dates_std": "June 29-July 1, 2026"}, {"name": "MARS Summer Meeting", "sector": "Logistics, Transportation & Supply Chain", "city": "Lake Geneva, WI", "country": "USA", "region": "US", "lat": 42.5917, "lon": -88.4334, "dates": "July 13\u201314, 2026", "month": "Jul", "dates_std": "July 13-14, 2026"}, {"name": "TCA Refrigerated Division", "sector": "Logistics, Transportation & Supply Chain", "city": "Nashville, TN", "country": "USA", "region": "US", "lat": 36.1627, "lon": -86.7816, "dates": "July 22\u201324, 2026", "month": "Jul", "dates_std": "July 22-24, 2026"}, {"name": "FTR Transportation Conference", "sector": "Logistics, Transportation & Supply Chain", "city": "Indianapolis, IN", "country": "USA", "region": "US", "lat": 39.7684, "lon": -86.1581, "dates": "Aug 31\u2013Sept 3, 2026", "month": "Aug", "dates_std": "Aug 31-Sept 3, 2026"}, {"name": "IANA Intermodal EXPO", "sector": "Logistics, Transportation & Supply Chain", "city": "Long Beach, CA", "country": "USA", "region": "US", "lat": 33.7701, "lon": -118.1937, "dates": "Sept 14\u201316, 2026", "month": "Sep", "dates_std": "Sept 14-16, 2026"}, {"name": "McLeod Software User Conf.", "sector": "Logistics, Transportation & Supply Chain", "city": "Nashville, TN", "country": "USA", "region": "US", "lat": 36.1627, "lon": -86.7816, "dates": "Sept 13\u201315, 2026", "month": "Sep", "dates_std": "Sept 13-15, 2026"}, {"name": "Tank Truck Week", "sector": "Logistics, Transportation & Supply Chain", "city": "Oklahoma City, OK", "country": "USA", "region": "US", "lat": 35.4676, "lon": -97.5164, "dates": "Sept 27\u201330, 2026", "month": "Sep", "dates_std": "Sept 27-30, 2026"}, {"name": "IWLA Convention & Expo", "sector": "Logistics, Transportation & Supply Chain", "city": "San Antonio, TX", "country": "USA", "region": "US", "lat": 29.4241, "lon": -98.4936, "dates": "Mar 29\u201331, 2026", "month": "Mar", "dates_std": "Mar 29-31, 2026"}, {"name": "AgTC Annual Meeting", "sector": "Logistics, Transportation & Supply Chain", "city": "Tacoma, WA", "country": "USA", "region": "US", "lat": 47.2529, "lon": -122.4443, "dates": "May 18\u201321, 2026", "month": "May", "dates_std": "May 18-21, 2026"}, {"name": "FreightWaves F3", "sector": "Logistics, Transportation & Supply Chain", "city": "Chattanooga, TN", "country": "USA", "region": "US", "lat": 35.0456, "lon": -85.3097, "dates": "Nov 2026", "month": "Nov", "dates_std": "Nov 2026"}, {"name": "Walcott Truckers Jamboree", "sector": "Logistics, Transportation & Supply Chain", "city": "Walcott, IA", "country": "USA", "region": "US", "lat": 41.5886, "lon": -90.7746, "dates": "July 9\u201311, 2026", "month": "Jul", "dates_std": "July 9-11, 2026"}, {"name": "AHRMM26 Conference", "sector": "Healthcare & Life Sciences", "city": "San Antonio, TX", "country": "USA", "region": "US", "lat": 29.4241, "lon": -98.4936, "dates": "July 26\u201329, 2026", "month": "Jul", "dates_std": "July 26-29, 2026"}, {"name": "IDN Summit & Reverse Expo \u2013 Spring", "sector": "Healthcare & Life Sciences", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "Apr 20\u201322, 2026", "month": "Apr", "dates_std": "Apr 20-22, 2026"}, {"name": "IDN Summit \u2013 Fall", "sector": "Healthcare & Life Sciences", "city": "Phoenix, AZ", "country": "USA", "region": "US", "lat": 33.4484, "lon": -112.074, "dates": "Aug 31\u2013Sep 2, 2026", "month": "Aug", "dates_std": "Aug 31-Sep 2, 2026"}, {"name": "LogiPharma USA", "sector": "Healthcare & Life Sciences", "city": "Boston, MA", "country": "USA", "region": "US", "lat": 42.3601, "lon": -71.0589, "dates": "Oct 5\u20137, 2026", "month": "Oct", "dates_std": "Oct 5-7, 2026"}, {"name": "BSMA Annual Summit", "sector": "Healthcare & Life Sciences", "city": "Foster City, CA", "country": "USA", "region": "US", "lat": 37.5585, "lon": -122.2711, "dates": "Mar 18\u201319, 2026", "month": "Mar", "dates_std": "Mar 18-19, 2026"}, {"name": "GHX Summit", "sector": "Healthcare & Life Sciences", "city": "New Orleans, LA", "country": "USA", "region": "US", "lat": 29.9511, "lon": -90.0715, "dates": "May 11\u201314, 2026", "month": "May", "dates_std": "May 11-14, 2026"}, {"name": "Global Life Sciences & Biotech Summit", "sector": "Healthcare & Life Sciences", "city": "Raleigh, NC", "country": "USA", "region": "US", "lat": 35.7796, "lon": -78.6382, "dates": "Apr 2026", "month": "Apr", "dates_std": "Apr 2026"}, {"name": "ARC Industry Forum", "sector": "Technology & Electronics", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "Feb 9\u201312, 2026", "month": "Feb", "dates_std": "Feb 9-12, 2026"}, {"name": "SAP Sapphire & ASUG", "sector": "Technology & Electronics", "city": "Orlando, FL", "country": "USA", "region": "US", "lat": 28.5384, "lon": -81.3789, "dates": "May 11\u201313, 2026", "month": "May", "dates_std": "May 11-13, 2026"}, {"name": "Coupa Inspire", "sector": "Technology & Electronics", "city": "Las Vegas, NV", "country": "USA", "region": "US", "lat": 36.1699, "lon": -115.1398, "dates": "May 11\u201314, 2026", "month": "May", "dates_std": "May 11-14, 2026"}, {"name": "Blue Yonder ICON", "sector": "Technology & Electronics", "city": "San Diego, CA", "country": "USA", "region": "US", "lat": 32.7157, "lon": -117.1611, "dates": "May 17\u201320, 2026", "month": "May", "dates_std": "May 17-20, 2026"}, {"name": "Manhattan Momentum", "sector": "Technology & Electronics", "city": "Las Vegas, NV", "country": "USA", "region": "US", "lat": 36.1699, "lon": -115.1398, "dates": "May 18\u201321, 2026", "month": "May", "dates_std": "May 18-21, 2026"}, {"name": "Oracle AI World & Supply Chain Summit", "sector": "Technology & Electronics", "city": "Las Vegas, NV", "country": "USA", "region": "US", "lat": 36.1699, "lon": -115.1398, "dates": "Oct 26\u201329, 2026", "month": "Oct", "dates_std": "Oct 26-29, 2026"}, {"name": "SEMICON West", "sector": "Technology & Electronics", "city": "San Francisco, CA", "country": "USA", "region": "US", "lat": 37.7749, "lon": -122.4194, "dates": "Oct 13\u201315, 2026", "month": "Oct", "dates_std": "Oct 13-15, 2026"}, {"name": "NextGen Supply Chain Conference", "sector": "Technology & Electronics", "city": "Chicago, IL", "country": "USA", "region": "US", "lat": 41.8781, "lon": -87.6298, "dates": "Apr 13\u201316, 2026", "month": "Apr", "dates_std": "Apr 13-16, 2026"}, {"name": "Downstream USA", "sector": "Energy & Utilities", "city": "Houston, TX", "country": "USA", "region": "US", "lat": 29.7604, "lon": -95.3698, "dates": "June 15\u201316, 2026", "month": "Jun", "dates_std": "June 15-16, 2026"}, {"name": "AI in Oil & Gas", "sector": "Energy & Utilities", "city": "Houston, TX", "country": "USA", "region": "US", "lat": 29.7604, "lon": -95.3698, "dates": "Apr 8\u20139, 2026", "month": "Apr", "dates_std": "Apr 8-9, 2026"}, {"name": "Data-Driven Oil & Gas USA", "sector": "Energy & Utilities", "city": "Houston, TX", "country": "USA", "region": "US", "lat": 29.7604, "lon": -95.3698, "dates": "Nov 2026", "month": "Nov", "dates_std": "Nov 2026"}, {"name": "NDIA National Logistics Forum", "sector": "Government & Defense", "city": "Tampa, FL", "country": "USA", "region": "US", "lat": 27.9506, "lon": -82.4572, "dates": "Feb 17\u201319, 2026", "month": "Feb", "dates_std": "Feb 17-19, 2026"}, {"name": "Defense Logistics & Support Summit", "sector": "Government & Defense", "city": "Washington, DC", "country": "USA", "region": "US", "lat": 38.9072, "lon": -77.0369, "dates": "Sept 2026", "month": "Sep", "dates_std": "Sept 2026"}, {"name": "Aerospace & Defense Supplier Summit", "sector": "Government & Defense", "city": "Seattle, WA", "country": "USA", "region": "US", "lat": 47.6062, "lon": -122.3321, "dates": "Mar 17\u201319, 2026", "month": "Mar", "dates_std": "Mar 17-19, 2026"}, {"name": "DLA Supply Chain Alliance Conference", "sector": "Government & Defense", "city": "Columbus, OH", "country": "USA", "region": "US", "lat": 39.9612, "lon": -82.9988, "dates": "June 2\u20133, 2026", "month": "Jun", "dates_std": "June 2-3, 2026"}, {"name": "Sea\u2013Air\u2013Space 2026", "sector": "Government & Defense", "city": "National Harbor, MD", "country": "USA", "region": "US", "lat": 38.7826, "lon": -77.0173, "dates": "Apr 19\u201322, 2026", "month": "Apr", "dates_std": "Apr 19-22, 2026"}, {"name": "NRF Retail\u2019s Big Show Europe", "sector": "Retail & FMCG", "city": "Paris, France", "country": "France", "region": "Global", "lat": 48.8566, "lon": 2.3522, "dates": "Sep 15-17, 2026", "month": "Sep", "dates_std": "Sep 15-17, 2026"}, {"name": "DELIVER Europe", "sector": "Retail & FMCG", "city": "Amsterdam, Netherlands", "country": "Netherlands", "region": "Global", "lat": 52.3676, "lon": 4.9041, "dates": "June 3-4, 2026", "month": "Jun", "dates_std": "June 3-4, 2026"}, {"name": "Shoptalk Europe 2026", "sector": "Retail & FMCG", "city": "Barcelona, Spain", "country": "Spain", "region": "Global", "lat": 41.3874, "lon": 2.1686, "dates": "June 2026 (TBD)", "month": "Jun", "dates_std": "June 2026 (TBD)"}, {"name": "Seamless Middle East", "sector": "Retail & FMCG", "city": "Dubai, UAE", "country": "UAE", "region": "Global", "lat": 25.2048, "lon": 55.2708, "dates": "May 12-14, 2026", "month": "May", "dates_std": "May 12-14, 2026"}, {"name": "EuroShop 2026", "sector": "Retail & FMCG", "city": "D\u00fcsseldorf, Germany", "country": "Germany", "region": "Global", "lat": 51.2277, "lon": 6.7735, "dates": "Feb 22-26, 2026", "month": "Feb", "dates_std": "Feb 22-26, 2026"}, {"name": "Retail Technology Show", "sector": "Retail & FMCG", "city": "London, UK", "country": "UK", "region": "Global", "lat": 51.5074, "lon": -0.1278, "dates": "Apr 28-29, 2026", "month": "Apr", "dates_std": "Apr 28-29, 2026"}, {"name": "Gartner Supply Chain Symposium/Xpo (EU)", "sector": "Logistics & SC", "city": "Barcelona, Spain", "country": "Spain", "region": "Global", "lat": 41.3874, "lon": 2.1686, "dates": "May 18-20, 2026", "month": "May", "dates_std": "May 18-20, 2026"}, {"name": "Breakbulk Europe", "sector": "Logistics & SC", "city": "Rotterdam, Netherlands", "country": "Netherlands", "region": "Global", "lat": 51.9244, "lon": 4.4777, "dates": "June 16-18, 2026", "month": "Jun", "dates_std": "June 16-18, 2026"}, {"name": "Multimodal 2026", "sector": "Logistics & SC", "city": "Birmingham, UK", "country": "UK", "region": "Global", "lat": 52.4862, "lon": -1.8904, "dates": "June 30 - Jul 2, 2026", "month": "Jun", "dates_std": "June 30 - Jul 2, 2026"}, {"name": "SIL Barcelona", "sector": "Logistics & SC", "city": "Barcelona, Spain", "country": "Spain", "region": "Global", "lat": 41.3874, "lon": 2.1686, "dates": "June 3-5, 2026", "month": "Jun", "dates_std": "June 3-5, 2026"}, {"name": "LogiMAT 2026", "sector": "Logistics & SC", "city": "Stuttgart, Germany", "country": "Germany", "region": "Global", "lat": 48.7758, "lon": 9.1829, "dates": "Mar 10-12, 2026", "month": "Mar", "dates_std": "Mar 10-12, 2026"}, {"name": "SiTL (Paris)", "sector": "Logistics & SC", "city": "Paris, France", "country": "France", "region": "Global", "lat": 48.8566, "lon": 2.3522, "dates": "Mar 31 - Apr 2, 2026", "month": "Mar", "dates_std": "Mar 31 - Apr 2, 2026"}, {"name": "Supply Chain & Logistics Transformation Summit", "sector": "Logistics & SC", "city": "Munich, Germany", "country": "Germany", "region": "Global", "lat": 48.1351, "lon": 11.582, "dates": "Nov 12-13, 2026", "month": "Nov", "dates_std": "Nov 12-13, 2026"}, {"name": "Leaders in Logistics: Post & Parcel Europe", "sector": "Logistics & SC", "city": "Copenhagen, Denmark", "country": "Denmark", "region": "Global", "lat": 55.6761, "lon": 12.5683, "dates": "Mar 2026 (TBD)", "month": "Mar", "dates_std": "Mar 2026 (TBD)"}, {"name": "National Manufacturing & SC Expo (Ireland)", "sector": "Logistics & SC", "city": "Dublin, Ireland", "country": "Ireland", "region": "Global", "lat": 53.3498, "lon": -6.2603, "dates": "Jan 23-24, 2026", "month": "Jan", "dates_std": "Jan 23-24, 2026"}, {"name": "Hannover Messe 2026", "sector": "Manufacturing/Infra", "city": "Hannover, Germany", "country": "Germany", "region": "Global", "lat": 52.3759, "lon": 9.732, "dates": "Apr 20-24, 2026", "month": "Apr", "dates_std": "Apr 20-24, 2026"}, {"name": "Interpack 2026", "sector": "Manufacturing/Infra", "city": "D\u00fcsseldorf, Germany", "country": "Germany", "region": "Global", "lat": 51.2277, "lon": 6.7735, "dates": "May 7-13, 2026", "month": "May", "dates_std": "May 7-13, 2026"}, {"name": "SPS 2026 (Smart Production Solutions)", "sector": "Manufacturing/Infra", "city": "Nuremberg, Germany", "country": "Germany", "region": "Global", "lat": 49.4521, "lon": 11.0767, "dates": "Nov 10-12, 2026", "month": "Nov", "dates_std": "Nov 10-12, 2026"}, {"name": "Smart City Expo World Congress", "sector": "Manufacturing/Infra", "city": "Barcelona, Spain", "country": "Spain", "region": "Global", "lat": 41.3874, "lon": 2.1686, "dates": "Nov 2026 (TBD)", "month": "Nov", "dates_std": "Nov 2026 (TBD)"}, {"name": "Farnborough International Airshow 2026", "sector": "Manufacturing/Infra", "city": "Farnborough, UK", "country": "UK", "region": "Global", "lat": 51.2855, "lon": -0.7559, "dates": "Jul 20-24, 2026", "month": "Jul", "dates_std": "Jul 20-24, 2026"}, {"name": "Mobile World Congress 2026", "sector": "Manufacturing/Infra", "city": "Barcelona, Spain", "country": "Spain", "region": "Global", "lat": 41.3874, "lon": 2.1686, "dates": "Feb 23-26, 2026", "month": "Feb", "dates_std": "Feb 23-26, 2026"}, {"name": "LogiPharma Europe", "sector": "Pharma/Healthcare", "city": "Vienna, Austria", "country": "Austria", "region": "Global", "lat": 48.2082, "lon": 16.3738, "dates": "Apr 14-16, 2026", "month": "Apr", "dates_std": "Apr 14-16, 2026"}, {"name": "GCCA European Cold Chain Conference", "sector": "Pharma/Healthcare", "city": "D\u00fcsseldorf, Germany", "country": "Germany", "region": "Global", "lat": 51.2277, "lon": 6.7735, "dates": "Mar 18-20, 2026", "month": "Mar", "dates_std": "Mar 18-20, 2026"}, {"name": "ISPE Europe Annual Conference", "sector": "Pharma/Healthcare", "city": "Dublin, Ireland", "country": "Ireland", "region": "Global", "lat": 53.3498, "lon": -6.2603, "dates": "Apr 20-23, 2026", "month": "Apr", "dates_std": "Apr 20-23, 2026"}, {"name": "Pharmapack Europe", "sector": "Pharma/Healthcare", "city": "Paris, France", "country": "France", "region": "Global", "lat": 48.8566, "lon": 2.3522, "dates": "Jan 21-22, 2026", "month": "Jan", "dates_std": "Jan 21-22, 2026"}, {"name": "Automotive Logistics & SC Europe", "sector": "Cross/Procurement", "city": "Bonn, Germany", "country": "Germany", "region": "Global", "lat": 50.7374, "lon": 7.0982, "dates": "Mar 17-19, 2026", "month": "Mar", "dates_std": "Mar 17-19, 2026"}, {"name": "TOC Europe (Port & Terminal Ops)", "sector": "Cross/Procurement", "city": "Rotterdam, Netherlands", "country": "Netherlands", "region": "Global", "lat": 51.9244, "lon": 4.4777, "dates": "June 2026 (TBD)", "month": "Jun", "dates_std": "June 2026 (TBD)"}, {"name": "TransLogistica Poland", "sector": "Cross/Procurement", "city": "Warsaw, Poland", "country": "Poland", "region": "Global", "lat": 52.2297, "lon": 21.0122, "dates": "Nov 2026 (TBD)", "month": "Nov", "dates_std": "Nov 2026 (TBD)"}, {"name": "World Procurement Congress", "sector": "Cross/Procurement", "city": "London, UK", "country": "UK", "region": "Global", "lat": 51.5074, "lon": -0.1278, "dates": "May 2026 (TBD)", "month": "May", "dates_std": "May 2026 (TBD)"}, {"name": "ProcureCon Europe", "sector": "Cross/Procurement", "city": "Barcelona, Spain", "country": "Spain", "region": "Global", "lat": 41.3874, "lon": 2.1686, "dates": "Nov 2026 (TBD)", "month": "Nov", "dates_std": "Nov 2026 (TBD)"}, {"name": "GTR MENA \u2013 Global Trade & SC Finance Summit", "sector": "Cross/Procurement", "city": "Dubai, UAE", "country": "UAE", "region": "Global", "lat": 25.2048, "lon": 55.2708, "dates": "Feb 10-11, 2026", "month": "Feb", "dates_std": "Feb 10-11, 2026"}];
+
+const sectorColors = {
+  "Retail, Consumer Goods & Grocery": "#2563eb",
+  "Manufacturing & Industrial": "#ef4444",
+  "Logistics, Transportation & Supply Chain": "#16a34a",
+  "Healthcare & Life Sciences": "#7c3aed",
+  "Technology & Electronics": "#f59e0b",
+  "Energy & Utilities": "#991b1b",
+  "Government & Defense": "#5f9ea0",
+  "Retail & FMCG": "#2563eb",
+  "Logistics & SC": "#16a34a",
+  "Manufacturing/Infra": "#ef4444",
+  "Pharma/Healthcare": "#7c3aed",
+  "Cross/Procurement": "#f59e0b",
+};
+
+const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","TBD"];
+
+// State
+let state = {
+  q: "",
+  region: "All",
+  sectors: new Set(),
+  months: new Set(months),
+  sortBy: "name"
+};
+
+// Map
+const map = L.map('map', { zoomControl: true }).setView([32, 5], 3);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+
+let cluster = L.markerClusterGroup();
+map.addLayer(cluster);
+
+// Build sector checkboxes dynamically
+const sectorSet = Array.from(new Set(DATA.map(d => d.sector)));
+const sectorBoxes = document.getElementById('sectorBoxes');
+sectorSet.sort().forEach(function(sec) {
+  const id = 'sec-' + sec.replace(/[^a-z0-9]/gi,'-');
+  const wrap = document.createElement('label');
+  wrap.innerHTML = '<input id="'+id+'" type="checkbox" checked/> ' + sec;
+  sectorBoxes.appendChild(wrap);
+  state.sectors.add(sec);
+  document.getElementById(id).addEventListener('change', function(e) {
+    if (e.target.checked) state.sectors.add(sec); else state.sectors.delete(sec);
+    render();
+  });
+});
+
+// Build month checkboxes
+const monthBoxes = document.getElementById('monthBoxes');
+months.forEach(function(m) {
+  const id = 'm-' + m;
+  const wrap = document.createElement('label');
+  wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap='6px';
+  wrap.innerHTML = '<input id="'+id+'" type="checkbox" checked/> <span class="tag">'+m+'</span>';
+  monthBoxes.appendChild(wrap);
+  document.getElementById(id).addEventListener('change', function(e) {
+    if (e.target.checked) state.months.add(m); else state.months.delete(m);
+    render();
+  });
+});
+document.getElementById('monthsAll').onclick = function() { state.months = new Set(months); monthBoxes.querySelectorAll('input').forEach(i=>i.checked=true); render(); };
+document.getElementById('monthsClear').onclick = function() { state.months = new Set(); monthBoxes.querySelectorAll('input').forEach(i=>i.checked=false); render(); };
+
+// Region radios
+document.querySelectorAll('input[name="region"]').forEach(function(r) { r.addEventListener('change', function(e) { state.region = e.target.value; render(); }); });
+
+// Search and sort
+document.getElementById('search').addEventListener('input', function(e) { state.q = e.target.value.toLowerCase(); render(); });
+document.getElementById('sortBy').addEventListener('change', function(e) { state.sortBy = e.target.value; render(); });
+
+// Legend
+const legend = document.getElementById('legend');
+function renderLegend() {
+  legend.innerHTML = '<div><b>Sector Legend</b></div>' + Object.entries(sectorColors).map(function([k,c]) { return `
+    <div class="legend-row">
+      <span class="dot" style="background:${c}"></span> <span>${k}</span>
+    </div>`; }).join('');
+}
+renderLegend();
+
+// Filter + render
+function filterData() {
+  return DATA.filter(function(d) {
+    if (state.region !== 'All' && d.region !== state.region) return false;
+    if (!state.sectors.has(d.sector)) return false;
+    if (!state.months.has(d.month)) return false;
+    if (state.q) {
+      const s = (d.name + ' ' + d.city + ' ' + (d.country||'') + ' ' + d.sector).toLowerCase();
+      if (!s.includes(state.q)) return false;
+    }
+    return true;
+  });
+}
+
+function sortData(arr) {
+  const key = state.sortBy;
+  return arr.slice().sort(function(a,b) { return String(a[key] || '').localeCompare(String(b[key] || '')); });
+}
+
+// draw markers + list
+const list = document.getElementById('list');
+const stats = document.getElementById('stats');
+
+function render() {
+  const filtered = sortData(filterData());
+  stats.textContent = filtered.length + ' events shown';
+  // markers
+  cluster.clearLayers();
+  filtered.forEach(function(d, idx) {
+    const color = sectorColors[d.sector] || '#888';
+    const marker = L.circleMarker([d.lat, d.lon], {
+      radius: 6, color: color, fillColor: color, fillOpacity: 0.9
+    });
+    marker.bindPopup('<b>'+d.name+'</b><br/>Dates: '+d.dates_std+'<br/>City: '+d.city+(d.country ? ', '+d.country : '')+'<br/>Sector: '+d.sector+'<br/>Region: '+d.region);
+    marker.on('click', function() { marker.openPopup(); });
+    cluster.addLayer(marker);
+    d._markerId = idx;
+  });
+
+  // list
+  list.innerHTML = '';
+  filtered.forEach(function(d) {
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">'
+      + '<div><b>'+d.name+'</b></div>'
+      + '<span class="tag">'+d.month+'</span>'
+      + '</div>'
+      + '<div class="muted">'+d.city+(d.country ? ', '+d.country : '')+' · '+d.sector+' · '+d.dates_std+'</div>';
+    el.onclick = function() { map.flyTo([d.lat, d.lon], 8, { duration: 0.75 }); };
+    list.appendChild(el);
+  });
+}
+render();
+
+// Export filtered to CSV
+function toCSV(rows) {
+  if (!rows.length) return;
+  const header = Object.keys(rows[0]);
+  const csv = [header.join(',')].concat(rows.map(r => header.map(k => JSON.stringify(r[k] ?? '')).join(','))).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'events_filtered.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('exportFiltered').onclick = function() { toCSV(sortData(filterData())); };
+
+// expose
+window._events = DATA;
+</script>
+</body>
+</html>
